@@ -9,30 +9,32 @@ RPC = os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
 FALLBACK_RPC = os.environ.get("SOLANA_FALLBACK_RPC_URL", "https://solana-rpc.publicnode.com")
 
 class RPCMethodError(Exception):
-    def __init__(self, method, kind, detail="", retryable=True):
+    def __init__(self, method, kind, detail="", retryable=True, provider="primary"):
         super().__init__(method + ": " + kind)
         self.method = method
         self.kind = kind
         self.detail = str(detail)[:150]
         self.retryable = retryable
+        self.provider = provider
 
 def call(method, params, endpoint=None):
     body = json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode()
     req = urllib.request.Request(endpoint or RPC, body, {"Content-Type":"application/json"})
+    provider = "fallback" if endpoint and endpoint != RPC else "primary"
     try:
         with urllib.request.urlopen(req, timeout=12) as response:
             result = json.load(response)
     except urllib.error.HTTPError as exc:
         raise RPCMethodError(method, "rate_limited" if exc.code == 429 else "http_error",
-                             "HTTP " + str(exc.code), exc.code in (429, 500, 502, 503, 504)) from exc
+                             "HTTP " + str(exc.code), exc.code in (429, 500, 502, 503, 504), provider) from exc
     except (OSError, ValueError) as exc:
-        raise RPCMethodError(method, "transport_error", type(exc).__name__) from exc
+        raise RPCMethodError(method, "transport_error", type(exc).__name__, provider=provider) from exc
     if result.get("error"):
         error = result["error"]
         code = error.get("code") if isinstance(error, dict) else None
-        raise RPCMethodError(method, "rpc_error", "RPC code " + str(code), code in (-32005, -32004, -32603))
+        raise RPCMethodError(method, "rpc_error", "RPC code " + str(code), code in (-32005, -32004, -32603), provider)
     if "result" not in result:
-        raise RPCMethodError(method, "invalid_response", "missing result")
+        raise RPCMethodError(method, "invalid_response", "missing result", provider=provider)
     return result["result"]
 
 def concentration(mint):
