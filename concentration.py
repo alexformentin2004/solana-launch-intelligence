@@ -6,7 +6,7 @@ import urllib.error
 import urllib.request
 
 RPC = os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
-FALLBACK_RPC = os.environ.get("SOLANA_FALLBACK_RPC_URL", "https://solana-rpc.publicnode.com")
+FALLBACK_RPC = os.environ.get("SOLANA_FALLBACK_RPC_URL", "").strip()  # opt-in; PublicNode returned HTTP 403
 
 class RPCMethodError(Exception):
     def __init__(self, method, kind, detail="", retryable=True, provider="primary"):
@@ -37,6 +37,19 @@ def call(method, params, endpoint=None):
         raise RPCMethodError(method, "invalid_response", "missing result", provider=provider)
     return result["result"]
 
+def fallback_preflight():
+    """Check a configured endpoint before requesting token-account data.
+
+    A successful getVersion proves reachability only, not method support.
+    """
+    if not FALLBACK_RPC or FALLBACK_RPC == RPC:
+        return False
+    try:
+        result = call("getVersion", [], endpoint=FALLBACK_RPC)
+        return isinstance(result, dict) and bool(result.get("solana-core"))
+    except RPCMethodError:
+        return False
+
 def concentration(mint):
     supply = call("getTokenSupply", [mint, {"commitment":"confirmed"}])
     try:
@@ -58,6 +71,8 @@ def concentration(mint):
         except RPCMethodError as second:
             if second.kind != "rate_limited" or not FALLBACK_RPC or FALLBACK_RPC == RPC:
                 raise
+            if not fallback_preflight():
+                raise second
             accounts = call("getTokenLargestAccounts", [mint, {"commitment":"confirmed"}], endpoint=FALLBACK_RPC)
             provider = "fallback"
     try:
