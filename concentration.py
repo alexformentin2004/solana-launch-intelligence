@@ -64,9 +64,10 @@ def concentration(mint):
         raise RPCMethodError("getTokenLargestAccounts", "invalid_response", "invalid accounts") from exc
     if not amounts:
         return {"status":"unavailable","reason":"no_token_accounts_returned",
-                "supply_check":"verified","largest_accounts_check":"verified","largest_accounts_provider":provider,"largest_accounts_provider":provider}
+                "supply_check":"verified","largest_accounts_check":"verified","largest_accounts_provider":provider}
     return {"status":"verified","unit":"token_accounts_not_unique_wallets",
             "supply_check":"verified","largest_accounts_check":"verified",
+            "largest_accounts_provider":provider,
             "top1_pct":round(100*sum(amounts[:1])/total,2),
             "top10_pct":round(100*sum(amounts[:10])/total,2),
             "top20_pct":round(100*sum(amounts[:20])/total,2),
