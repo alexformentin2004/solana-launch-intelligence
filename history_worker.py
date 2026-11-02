@@ -45,6 +45,12 @@ def main():
     observed_at = datetime.now(timezone.utc).isoformat()
     written = 0
     failed = 0
+    # Rotate across recent launches instead of polling the same ten forever.
+    # A 5-minute schedule advances one batch per execution.
+    slot = int(datetime.now(timezone.utc).timestamp() // 300)
+    if launches:
+        start = (slot * MAX_POOLS) % len(launches)
+        launches = launches[start:] + launches[:start]
     for launch in launches:
         if written + failed >= MAX_POOLS:
             break
@@ -64,7 +70,7 @@ def main():
             print("HISTORY refresh_failed", launch["mint"][:8], type(exc).__name__, flush=True)
         time.sleep(0.15)
     print("HISTORY refreshed", written, "failed", failed, "limit", MAX_POOLS, flush=True)
-    return 0 if written else 1
+    return 0 if written or not launches else 1
 
 if __name__ == "__main__":
     sys.exit(main())
