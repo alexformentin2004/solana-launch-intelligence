@@ -21,7 +21,7 @@ def rows_for(mint, address, candles, created_at):
             prices = [float(x) for x in (op, hi, lo, close)]
             if not all(0 < x < float("inf") for x in prices):
                 continue
-            if hi < max(op, close, lo) or lo > min(op, close):
+            if prices[1] < max(prices[0], prices[3], prices[2]) or prices[2] > min(prices[0], prices[3]):
                 continue
             if not born - 60 <= t <= born + 3600:
                 continue
