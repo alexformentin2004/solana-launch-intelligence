@@ -59,13 +59,18 @@ def main():
         by_mint[row["mint"]].append(row)
     counts = defaultdict(int)
     examples = []
+    net_returns = []
+    gross_returns = []
     for launch in launches:
         result = evaluate(launch, by_mint[launch["mint"]])
         key = result.get("reason") or result["status"]
         counts[key] += 1
-        if len(examples) < 5 and result["status"] == "approximate":
+        if result["status"] == "approximate":
             adjusted = apply_costs(result)
-            examples.append({"mint_prefix": launch["mint"][:8],
+            net_returns.append(adjusted["estimated_net_marked_return_pct"])
+            gross_returns.append(result["total_marked_return_pct"])
+            if len(examples) < 5:
+                examples.append({"mint_prefix": launch["mint"][:8],
                              "status": result["status"],
                              "marked_return_pct": result["total_marked_return_pct"],
                              "estimated_net_marked_return_pct": adjusted["estimated_net_marked_return_pct"],
@@ -73,6 +78,10 @@ def main():
     print("PAPER_DIAGNOSTIC", json.dumps({"launches": len(launches),
           "snapshots": len(rows), "classification": dict(counts),
           "illustrative_replays": examples, "live_trades": 0,
+          "exploratory_replay_count": len(net_returns),
+          "exploratory_mean_gross_marked_pct": round(sum(gross_returns)/len(gross_returns), 3) if net_returns else None,
+          "exploratory_mean_net_marked_pct": round(sum(net_returns)/len(net_returns), 3) if net_returns else None,
+          "exploratory_positive_net_fraction": round(sum(x>0 for x in net_returns)/len(net_returns), 4) if net_returns else None,
           "note": "hypothetical fees/slippage only; no actual execution or liquidity impact model"}, sort_keys=True))
     return 0
 
