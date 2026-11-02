@@ -16,7 +16,7 @@ def _base58(data):
     while number:
         number, remainder = divmod(number, 58)
         encoded = alphabet[remainder] + encoded
-    return "1" * (len(data) - len(data.lstrip(b"\\x00"))) + encoded
+    return "1" * (len(data) - len(data.lstrip(bytes([0])))) + encoded
 
 def mint_checks(mint):
     body = json.dumps({"jsonrpc":"2.0","id":1,"method":"getAccountInfo",
