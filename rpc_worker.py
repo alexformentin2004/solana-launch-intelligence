@@ -87,7 +87,7 @@ def process(row):
             throttled = exc.kind == "rate_limited"
             holders = {"status":"error","failed_method":exc.method,
                        "error_kind":exc.kind,"error_detail":exc.detail,
-                       "retryable":exc.retryable}
+                       "retryable":exc.retryable,"provider":exc.provider}
         except (OSError, ValueError, KeyError, TypeError) as exc:
             throttled = getattr(exc, "code", None) == 429
             holders = {"status":"error","error_type":type(exc).__name__,
@@ -111,7 +111,9 @@ def process(row):
     print("RPC audit",mint[:8],"onchain",chain.get("status"),
           "concentration",holders.get("status"),
           "failed_method",holders.get("failed_method"),
-          "error_kind",holders.get("error_kind"),"rate_limited",throttled)
+          "error_kind",holders.get("error_kind"),
+          "provider",holders.get("provider") or holders.get("largest_accounts_provider"),
+          "rate_limited",throttled)
 
 def main():
     if not URL or not KEY:
