@@ -6,7 +6,8 @@ import urllib.error
 import urllib.request
 
 RPC = os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
-FALLBACK_RPC = os.environ.get("SOLANA_FALLBACK_RPC_URL", "https://rpc.magicblock.app/mainnet").strip()\nPROBE_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"  # USDC mainnet
+FALLBACK_RPC = os.environ.get("SOLANA_FALLBACK_RPC_URL", "https://rpc.magicblock.app/mainnet").strip()
+PROBE_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"  # USDC mainnet
 
 class RPCMethodError(Exception):
     def __init__(self, method, kind, detail="", retryable=True, provider="primary"):
