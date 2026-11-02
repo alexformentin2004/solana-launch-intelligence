@@ -1,6 +1,7 @@
 """Top token-account concentration with per-method RPC diagnostics."""
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -42,7 +43,13 @@ def concentration(mint):
     if total <= 0:
         return {"status":"unavailable","reason":"zero_supply",
                 "supply_check":"verified"}
-    accounts = call("getTokenLargestAccounts", [mint, {"commitment":"confirmed"}])
+    try:
+        accounts = call("getTokenLargestAccounts", [mint, {"commitment":"confirmed"}])
+    except RPCMethodError as exc:
+        if exc.kind != "rate_limited":
+            raise
+        time.sleep(5)
+        accounts = call("getTokenLargestAccounts", [mint, {"commitment":"confirmed"}])
     try:
         amounts = [int(x["amount"]) for x in accounts["value"]]
     except (KeyError, TypeError, ValueError) as exc:
