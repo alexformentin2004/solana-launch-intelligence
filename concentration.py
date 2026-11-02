@@ -6,7 +6,7 @@ import urllib.error
 import urllib.request
 
 RPC = os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
-FALLBACK_RPC = os.environ.get("SOLANA_FALLBACK_RPC_URL", "").strip()  # opt-in; PublicNode returned HTTP 403
+FALLBACK_RPC = os.environ.get("SOLANA_FALLBACK_RPC_URL", "https://rpc.magicblock.app/mainnet").strip()\nPROBE_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"  # USDC mainnet
 
 class RPCMethodError(Exception):
     def __init__(self, method, kind, detail="", retryable=True, provider="primary"):
@@ -38,15 +38,16 @@ def call(method, params, endpoint=None):
     return result["result"]
 
 def fallback_preflight():
-    """Check a configured endpoint before requesting token-account data.
-
-    A successful getVersion proves reachability only, not method support.
-    """
+    """Probe the exact method required, using a known mainnet SPL mint."""
     if not FALLBACK_RPC or FALLBACK_RPC == RPC:
         return False
     try:
-        result = call("getVersion", [], endpoint=FALLBACK_RPC)
-        return isinstance(result, dict) and bool(result.get("solana-core"))
+        result = call("getTokenLargestAccounts",
+                      [PROBE_MINT, {"commitment":"confirmed"}], endpoint=FALLBACK_RPC)
+        return (isinstance(result, dict) and isinstance(result.get("value"), list)
+                and len(result["value"]) > 0
+                and all(isinstance(x, dict) and str(x.get("amount", "")).isdigit()
+                        for x in result["value"]))
     except RPCMethodError:
         return False
 
@@ -65,7 +66,7 @@ def concentration(mint):
     except RPCMethodError as exc:
         if exc.kind != "rate_limited":
             raise
-        time.sleep(5)
+        time.sleep(2)
         try:
             accounts = call("getTokenLargestAccounts", [mint, {"commitment":"confirmed"}])
         except RPCMethodError as second:
