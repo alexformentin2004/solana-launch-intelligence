@@ -3,6 +3,8 @@ from onchain import _base58, SPL_TOKEN, TOKEN_2022
 from auditor import audit
 from unittest.mock import patch
 from concentration import concentration
+from rpc_worker import eligible
+from datetime import datetime, timedelta, timezone
 
 class AuditTests(unittest.TestCase):
     def test_base58_authority_encoding(self):
@@ -25,6 +27,19 @@ class AuditTests(unittest.TestCase):
         with patch("concentration.call",side_effect=[
             {"value":{"amount":"1000"}},{"value":[]}]):
             self.assertEqual(concentration("mint")["status"],"unavailable")
+    def test_rpc_queue_max_attempts(self):
+        row={"metrics":{"rpc_queue":{"attempts":5},"onchain":{"status":"error"}}}
+        self.assertFalse(eligible(row))
+    def test_rpc_queue_cooldown(self):
+        future=(datetime.now(timezone.utc)+timedelta(hours=2)).isoformat()
+        row={"metrics":{"rpc_queue":{"attempts":1,"next_attempt_at":future}}}
+        self.assertFalse(eligible(row))
+    def test_rpc_queue_completed(self):
+        row={"metrics":{"onchain":{"status":"verified"},"concentration":{"status":"verified"}}}
+        self.assertFalse(eligible(row))
+    def test_rpc_queue_pending(self):
+        row={"metrics":{"onchain":{"status":"verified"},"concentration":{"status":"error"}}}
+        self.assertTrue(eligible(row))
     def test_low_liquidity(self):
         a = audit("mint", {"attributes":{"reserve_in_usd":"500","transactions":{"m5":{"buys":1,"sells":8}}}})
         self.assertEqual(a["risk_level"], "high")
