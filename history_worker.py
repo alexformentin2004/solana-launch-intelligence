@@ -38,19 +38,21 @@ def main():
         return 2
     from collector import request_json as fetch
     headers = {"apikey": KEY, "Authorization": "Bearer " + KEY}
-    # Revisit the newest launches; preserve snapshots across runs, including failed tokens.
+    # Freeze a cohort for an hour, enabling repeated samples rather than one-off refreshes.
+    # At the next hour, select a new cohort of recent launches.
+    now = datetime.now(timezone.utc)
+    hour_start = now.replace(minute=0, second=0, microsecond=0)
+    cutoff = quote(hour_start.isoformat(), safe="")
     query = (URL + "/rest/v1/launches?select=mint,raw,first_seen_at"
-             "&order=first_seen_at.desc&limit=100")
+             + "&first_seen_at=lte." + cutoff
+             + "&order=first_seen_at.desc&limit=100")
     launches = fetch(query, headers=headers) or []
     observed_at = datetime.now(timezone.utc).isoformat()
     written = 0
     failed = 0
-    # Rotate across recent launches instead of polling the same ten forever.
-    # A 5-minute schedule advances one batch per execution.
-    slot = int(datetime.now(timezone.utc).timestamp() // 300)
-    if launches:
-        start = (slot * MAX_POOLS) % len(launches)
-        launches = launches[start:] + launches[:start]
+    # Keep the same ten eligible pools throughout this hour.
+    # Avoid rotating every five minutes: that yields too few observations per token.
+    launches = [launch for launch in launches if pool_address(launch.get("raw"))][:MAX_POOLS]
     for launch in launches:
         if written + failed >= MAX_POOLS:
             break
@@ -69,7 +71,7 @@ def main():
             failed += 1
             print("HISTORY refresh_failed", launch["mint"][:8], type(exc).__name__, flush=True)
         time.sleep(0.15)
-    print("HISTORY refreshed", written, "failed", failed, "limit", MAX_POOLS, flush=True)
+    print("HISTORY refreshed", written, "failed", failed, "cohort_hour", hour_start.isoformat(), "limit", MAX_POOLS, flush=True)
     return 0 if written or not launches else 1
 
 if __name__ == "__main__":
