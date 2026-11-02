@@ -10,6 +10,12 @@ class AuditTests(unittest.TestCase):
         a = audit("mint", {"attributes":{}})
         self.assertNotEqual(a["risk_level"], "low")
         self.assertEqual(a["confidence"], "limited")
+    def test_active_authorities_increase_risk(self):
+        pool = {"attributes":{"reserve_in_usd":"100000"}}
+        safe = audit("mint",pool,{"status":"verified","mint_authority_present":False,"freeze_authority_present":False})
+        risky = audit("mint",pool,{"status":"verified","mint_authority_present":True,"freeze_authority_present":True})
+        self.assertGreater(risky["risk_score"],safe["risk_score"])
+        self.assertNotIn("mint_authority",safe["checks_pending"])
     def test_no_trading_actions(self):
         a = audit("mint", {"attributes":{"reserve_in_usd":"100000"}})
         self.assertEqual(a["risk_level"], "medium")
