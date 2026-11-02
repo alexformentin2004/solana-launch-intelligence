@@ -41,6 +41,11 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python collector.py
+      - name: Refresh historical pool snapshots
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python history_worker.py
       - name: Process one pending RPC audit
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
