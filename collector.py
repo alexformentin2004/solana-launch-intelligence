@@ -6,6 +6,7 @@ import urllib.error
 import urllib.request
 from auditor import audit
 from onchain import mint_checks
+from concentration import concentration as account_concentration
 from datetime import datetime, timezone
 
 API = "https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=1"
@@ -70,7 +71,13 @@ def main():
                     chain = mint_checks(mint)
                 except (OSError, ValueError, KeyError, TypeError) as exc:
                     print(f"Optional RPC check unavailable for {mint[:8]}: {type(exc).__name__}")
-            audits[mint] = audit(mint, pool, chain)
+            concentration = None
+            if chain is not None:
+                try:
+                    concentration = account_concentration(mint)
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    print(f"Optional concentration check unavailable for {mint[:8]}: {type(exc).__name__}")
+            audits[mint] = audit(mint, pool, chain, concentration)
             snapshots[mint] = {
                 "mint": mint, "observed_at": now,
                 "price_usd": attrs.get("base_token_price_usd"),
