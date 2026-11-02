@@ -4,6 +4,7 @@ Usage: SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... python historical_candle_a
 Optional: HISTORICAL_MAX_POOLS=20 (default), HISTORICAL_DELAY_SECONDS=3.
 """
 import json
+import re
 import os
 import sys
 import time
@@ -51,6 +52,17 @@ def analyze(launch, candles):
             "last_close_usd": valid[after[-1]][3],
             "note": "No 30-90s executable entry or TP/SL order can be established from OHLC."}
 
+def safe_error(exc):
+    """Return actionable HTTP diagnostics without leaking URLs or credentials."""
+    message = str(exc)
+    match = re.search(r"HTTP (\\d{3})", message)
+    if match:
+        code = int(match.group(1))
+        return ("rate_limited" if code == 429 else
+                "not_found" if code == 404 else
+                "api_http_" + str(code))
+    return type(exc).__name__
+
 def main():
     url = os.getenv("SUPABASE_URL", "").rstrip("/")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -63,6 +75,7 @@ def main():
     launches = request_json(url + "/rest/v1/launches?select=mint,created_at,raw"
                             "&order=first_seen_at.desc&limit=" + str(max_pools), headers) or []
     summary = {}
+    error_categories = {}
     results = []
     for launch in launches:
         address = pool_address(launch.get("raw"))
@@ -81,13 +94,17 @@ def main():
                            .get("ohlcv_list") or [])
                 result = analyze(launch, candles)
             except (OSError, ValueError, TypeError, KeyError) as exc:
-                result = {"status": "api_error", "error_type": type(exc).__name__}
+                result = {"status": "api_error", "error_type": safe_error(exc)}
         status = result["status"]
         summary[status] = summary.get(status, 0) + 1
+        if status == "api_error":
+            category = result["error_type"]
+            error_categories[category] = error_categories.get(category, 0) + 1
         results.append({"mint_prefix": launch["mint"][:8], **result})
         time.sleep(delay)
     print("HISTORICAL_CANDLE_AUDIT", json.dumps({
         "pools_checked": len(launches), "classification": summary,
+        "error_categories": error_categories,
         "results": results,
         "roi_pct": None,
         "warning": "OHLC minute candles are not executable prices; no ROI calculated."
