@@ -46,12 +46,23 @@ def eligible(row, now=None):
         return False
     return chain.get("status") != "verified" or holders.get("status") not in ("verified", "unavailable")
 
+def priority(row):
+    metrics = row.get("metrics") or {}
+    liquidity = max(0, float(metrics.get("liquidity_usd") or 0))
+    volume = max(0, float(metrics.get("volume_5m_usd") or 0))
+    # Bounded liquidity/volume weighting prevents huge outliers dominating.
+    import math
+    score = min(5, math.log10(1 + liquidity)) + min(5, math.log10(1 + volume))
+    if (metrics.get("onchain") or {}).get("status") == "verified":
+        score += 2  # finish partially verified audits before starting new RPC work
+    return score
+
 def candidates():
     # Scan newest audit rows first, but process only audits whose cooldown expired.
     path = "token_audits?select=mint,metrics,audited_at&order=audited_at.desc&limit=500"
     rows = db("GET", path)
     now = datetime.now(timezone.utc)
-    return [r for r in rows if eligible(r, now)]
+    return sorted((r for r in rows if eligible(r, now)), key=priority, reverse=True)
 
 def process(row):
     mint = row["mint"]
