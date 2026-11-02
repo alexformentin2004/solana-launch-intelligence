@@ -1,13 +1,10 @@
 """Solana new-pool observer; standard-library-only cloud worker."""
 import json
-import time
 import os
 import sys
 import urllib.error
 import urllib.request
 from auditor import audit
-from onchain import mint_checks
-from concentration import concentration as account_concentration
 from datetime import datetime, timezone
 
 API = "https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=1"
@@ -51,8 +48,6 @@ def main():
         response = request_json(API)
         pools = response.get("data", [])
         launches, snapshots, audits = {}, {}, {}
-        rpc_attempts = 0
-        rpc_limited = False
         for pool in pools:
             attrs = pool.get("attributes") or {}
             rel = (pool.get("relationships") or {}).get("base_token") or {}
@@ -66,31 +61,7 @@ def main():
                 "created_at": created, "first_seen_at": now, "last_seen_at": now,
                 "raw": {"pool_id": pool.get("id"), "pool_name": attrs.get("name")},
             }
-            chain = None
-            if mint not in audits and rpc_attempts < 3 and not rpc_limited:
-                rpc_attempts += 1
-                try:
-                    chain = mint_checks(mint)
-                except (OSError, ValueError, KeyError, TypeError) as exc:
-                    if getattr(exc, "code", None) == 429:
-                        rpc_limited = True
-                    chain = {"status":"error","error_type":type(exc).__name__,
-                             "error_detail":str(exc)[:180]}
-                    print(f"Optional RPC check unavailable for {mint[:8]}: {type(exc).__name__}: {str(exc)[:180]}")
-            concentration = None
-            if chain is not None and chain.get("status") == "verified" and not rpc_limited:
-                time.sleep(1.2)
-                try:
-                    concentration = account_concentration(mint)
-                except (OSError, ValueError, KeyError, TypeError) as exc:
-                    if getattr(exc, "code", None) == 429:
-                        rpc_limited = True
-                    concentration = {"status":"error","error_type":type(exc).__name__,
-                                     "error_detail":str(exc)[:180]}
-                    print(f"Optional concentration check unavailable for {mint[:8]}: {type(exc).__name__}: {str(exc)[:180]}")
-            audits[mint] = audit(mint, pool, chain, concentration)
-            if chain is not None and not rpc_limited:
-                time.sleep(1.2)
+            audits[mint] = audit(mint, pool)
             snapshots[mint] = {
                 "mint": mint, "observed_at": now,
                 "price_usd": attrs.get("base_token_price_usd"),
@@ -104,7 +75,7 @@ def main():
         # Ignore conflicts rather than overwriting historical launch metadata.
         db("launches", list(launches.values()), "resolution=ignore-duplicates,return=minimal", "mint")
         db("token_snapshots", list(snapshots.values()))
-        db("token_audits", list(audits.values()), on_conflict="mint")
+        db("token_audits", list(audits.values()), "resolution=ignore-duplicates,return=minimal", "mint")
         db("collection_runs", [{**run, "finished_at": datetime.now(timezone.utc).isoformat(),
                                 "status": "success", "items_seen": len(pools),
                                 "items_written": len(snapshots)}], "return=minimal")
