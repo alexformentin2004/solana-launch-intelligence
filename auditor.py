@@ -1,7 +1,7 @@
 """Conservative research-only audit. No trading, no private keys, no paid API."""
 from datetime import datetime, timezone
 
-def audit(mint, pool, chain=None):
+def audit(mint, pool, chain=None, concentration=None):
     attrs = pool.get("attributes") or {}
     liquidity = _number(attrs.get("reserve_in_usd"))
     vol = _number((attrs.get("volume_usd") or {}).get("m5"))
@@ -40,6 +40,15 @@ def audit(mint, pool, chain=None):
             findings.append({"code":"freeze_authority_active","severity":"high"})
         else:
             findings.append({"code":"freeze_authority_revoked","severity":"info"})
+    if concentration and concentration.get("status") == "verified":
+        pending = [x for x in pending if x != "holder_concentration"]
+        top10 = concentration.get("top10_pct",0)
+        if top10 >= 80:
+            score += 20
+            findings.append({"code":"top10_token_accounts_extreme_concentration","severity":"high"})
+        elif top10 >= 50:
+            score += 10
+            findings.append({"code":"top10_token_accounts_concentrated","severity":"medium"})
     score = max(0,min(100,score))
     # Unknown critical checks prohibit a low-risk verdict.
     level = "high" if score >= 70 else "medium" if score >= 40 else "unknown"
@@ -47,7 +56,7 @@ def audit(mint, pool, chain=None):
             "risk_score":score,"risk_level":level,"confidence":"limited",
             "findings":findings,"checks_pending":pending,
             "metrics":{"liquidity_usd":liquidity,"volume_5m_usd":vol,"buys_5m":buys,
-                       "sells_5m":sells,"pool_created_at":created,"onchain":chain or {"status":"not_checked"}}}
+                       "sells_5m":sells,"pool_created_at":created,"onchain":chain or {"status":"not_checked"},"concentration":concentration or {"status":"not_checked"}}}
 
 def _number(v):
     try:
