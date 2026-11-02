@@ -41,28 +41,43 @@ def call(method, params, endpoint=None):
 def fallback_preflight():
     """Probe the exact method required, using a known mainnet SPL mint."""
     if not FALLBACK_RPC or FALLBACK_RPC == RPC:
+        diagnostic("fallback_probe_skipped", reason="not_configured")
         return False
     try:
         result = call("getTokenLargestAccounts",
                       [PROBE_MINT, {"commitment":"confirmed"}], endpoint=FALLBACK_RPC)
-        return (isinstance(result, dict) and isinstance(result.get("value"), list)
+        valid = (isinstance(result, dict) and isinstance(result.get("value"), list)
                 and len(result["value"]) > 0
                 and all(isinstance(x, dict) and str(x.get("amount", "")).isdigit()
                         for x in result["value"]))
-    except RPCMethodError:
+        diagnostic("fallback_probe_result", valid=valid)
+        return valid
+    except RPCMethodError as exc:
+        diagnostic("fallback_probe_failed", kind=exc.kind, provider=exc.provider)
         return False
+
+def diagnostic(stage, **fields):
+    """Log only method/status/provider metadata; never endpoints or credentials."""
+    print("RPC_DIAGNOSTIC", stage, json.dumps(fields, sort_keys=True), flush=True)
 
 def supply_with_fallback(mint):
     """Try the configured fallback when the primary supply endpoint is throttled."""
     params = [mint, {"commitment":"confirmed"}]
     try:
-        return call("getTokenSupply", params), "primary"
+        result = call("getTokenSupply", params)
+        diagnostic("supply_ok", provider="primary")
+        return result, "primary"
     except RPCMethodError as exc:
+        diagnostic("supply_primary_failed", kind=exc.kind, provider=exc.provider)
         if exc.kind != "rate_limited" or not FALLBACK_RPC or FALLBACK_RPC == RPC:
             raise
+        diagnostic("supply_fallback_attempt", configured=True)
         try:
-            return call("getTokenSupply", params, endpoint=FALLBACK_RPC), "fallback"
+            result = call("getTokenSupply", params, endpoint=FALLBACK_RPC)
+            diagnostic("supply_ok", provider="fallback")
+            return result, "fallback"
         except RPCMethodError as fallback_error:
+            diagnostic("supply_fallback_failed", kind=fallback_error.kind, provider=fallback_error.provider)
             raise fallback_error from exc
 
 def concentration(mint):
@@ -77,20 +92,27 @@ def concentration(mint):
     provider = "primary"
     try:
         accounts = call("getTokenLargestAccounts", [mint, {"commitment":"confirmed"}])
+        diagnostic("largest_accounts_ok", provider="primary")
     except RPCMethodError as exc:
+        diagnostic("largest_accounts_primary_failed", kind=exc.kind)
         if exc.kind != "rate_limited":
             raise
+        diagnostic("largest_accounts_retry", delay_seconds=2)
         time.sleep(2)
         try:
             accounts = call("getTokenLargestAccounts", [mint, {"commitment":"confirmed"}])
+            diagnostic("largest_accounts_ok", provider="primary_retry")
         except RPCMethodError as second:
+            diagnostic("largest_accounts_retry_failed", kind=second.kind)
             if second.kind != "rate_limited" or not FALLBACK_RPC or FALLBACK_RPC == RPC:
                 raise
             if not fallback_preflight():
                 raise RPCMethodError("getTokenLargestAccounts", "fallback_preflight_failed",
                                      "Fallback did not return valid token accounts for probe mint",
                                      False, "fallback") from second
+            diagnostic("largest_accounts_fallback_attempt", configured=True)
             accounts = call("getTokenLargestAccounts", [mint, {"commitment":"confirmed"}], endpoint=FALLBACK_RPC)
+            diagnostic("largest_accounts_ok", provider="fallback")
             provider = "fallback"
     try:
         amounts = [int(x["amount"]) for x in accounts["value"]]
