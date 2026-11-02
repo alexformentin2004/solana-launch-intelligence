@@ -40,6 +40,15 @@ class AuditTests(unittest.TestCase):
                 concentration("mint")
         self.assertEqual(ctx.exception.method,"getTokenLargestAccounts")
         self.assertEqual(ctx.exception.kind,"rate_limited")
+    def test_largest_accounts_retry_once(self):
+        failure=RPCMethodError("getTokenLargestAccounts","rate_limited","HTTP 429")
+        with patch("concentration.call",side_effect=[
+            {"value":{"amount":"1000"}},failure,
+            {"value":[{"amount":"500"}]}]) as rpc, patch("concentration.time.sleep") as pause:
+            result=concentration("mint")
+        self.assertEqual(result["status"],"verified")
+        self.assertEqual(rpc.call_count,3)
+        pause.assert_called_once_with(5)
     def test_rpc_queue_max_attempts(self):
         row={"metrics":{"rpc_queue":{"attempts":5},"onchain":{"status":"error"}}}
         self.assertFalse(eligible(row))
