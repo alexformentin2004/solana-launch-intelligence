@@ -33,7 +33,7 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(result["reason"],"zero_supply")
         rpc.assert_called_once()
     def test_rpc_error_identifies_method(self):
-        with patch("concentration.call", side_effect=[
+        with patch("concentration.FALLBACK_RPC", ""), patch("concentration.call", side_effect=[
             {"value":{"amount":"1000"}},
             RPCMethodError("getTokenLargestAccounts","rate_limited","HTTP 429"),
             RPCMethodError("getTokenLargestAccounts","rate_limited","HTTP 429")]) as rpc, patch("concentration.time.sleep") as pause:
@@ -52,6 +52,15 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(result["status"],"verified")
         self.assertEqual(rpc.call_count,3)
         pause.assert_called_once_with(5)
+    def test_largest_accounts_free_fallback(self):
+        error=RPCMethodError("getTokenLargestAccounts","rate_limited","HTTP 429")
+        with patch("concentration.FALLBACK_RPC","https://solana-rpc.publicnode.com"), patch("concentration.call",side_effect=[
+            {"value":{"amount":"1000"}},error,error,{"value":[{"amount":"500"}]}]) as rpc, patch("concentration.time.sleep"):
+            result=concentration("mint")
+        self.assertEqual(result["largest_accounts_provider"],"fallback")
+        self.assertEqual(result["top1_pct"],50)
+        self.assertEqual(rpc.call_count,4)
+        self.assertEqual(rpc.call_args.kwargs["endpoint"],"https://solana-rpc.publicnode.com")
     def test_rpc_queue_max_attempts(self):
         row={"metrics":{"rpc_queue":{"attempts":5},"onchain":{"status":"error"}}}
         self.assertFalse(eligible(row))
