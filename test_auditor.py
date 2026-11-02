@@ -40,7 +40,7 @@ class AuditTests(unittest.TestCase):
             with self.assertRaises(RPCMethodError) as ctx:
                 concentration("mint")
         self.assertEqual(rpc.call_count, 3)
-        pause.assert_called_once_with(5)
+        pause.assert_called_once_with(2)
         self.assertEqual(ctx.exception.method,"getTokenLargestAccounts")
         self.assertEqual(ctx.exception.kind,"rate_limited")
     def test_largest_accounts_retry_once(self):
@@ -54,17 +54,22 @@ class AuditTests(unittest.TestCase):
         pause.assert_called_once_with(5)
     def test_largest_accounts_free_fallback(self):
         error=RPCMethodError("getTokenLargestAccounts","rate_limited","HTTP 429")
-        with patch("concentration.FALLBACK_RPC","https://solana-rpc.publicnode.com"), patch("concentration.call",side_effect=[
-            {"value":{"amount":"1000"}},error,error,{"solana-core":"1.18.0"},{"value":[{"amount":"500"}]}]) as rpc, patch("concentration.time.sleep"):
+        with patch("concentration.FALLBACK_RPC","https://rpc.magicblock.app/mainnet"), patch("concentration.call",side_effect=[
+            {"value":{"amount":"1000"}},error,error,{"value":[{"amount":"1000"}]},{"value":[{"amount":"500"}]}]) as rpc, patch("concentration.time.sleep"):
             result=concentration("mint")
         self.assertEqual(result["largest_accounts_provider"],"fallback")
         self.assertEqual(result["top1_pct"],50)
         self.assertEqual(rpc.call_count,5)
-        self.assertEqual(rpc.call_args.kwargs["endpoint"],"https://solana-rpc.publicnode.com")
+        self.assertEqual(rpc.call_args.kwargs["endpoint"],"https://rpc.magicblock.app/mainnet")
     def test_fallback_preflight_rejects_403(self):
         from concentration import fallback_preflight
         with patch("concentration.FALLBACK_RPC","https://example.invalid"), patch(
             "concentration.call", side_effect=RPCMethodError("getVersion","http_error","HTTP 403",False,"fallback")):
+            self.assertFalse(fallback_preflight())
+    def test_fallback_preflight_rejects_empty_result(self):
+        from concentration import fallback_preflight
+        with patch("concentration.FALLBACK_RPC","https://rpc.magicblock.app/mainnet"), patch(
+            "concentration.call", return_value={"value":[]}):
             self.assertFalse(fallback_preflight())
     def test_rpc_error_provider(self):
         self.assertEqual(RPCMethodError("getTokenLargestAccounts","http_error",
