@@ -35,7 +35,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Run auditor unit tests
-        run: python -m unittest -v test_auditor.py
+        run: python -m unittest -v test_auditor.py test_paper_strategy.py
       - name: Poll new pools
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
