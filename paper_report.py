@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 from collector import request_json
 from paper_strategy import replay
+from execution_costs import apply_costs
 
 URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -63,14 +64,16 @@ def main():
         key = result.get("reason") or result["status"]
         counts[key] += 1
         if len(examples) < 5 and result["status"] == "approximate":
+            adjusted = apply_costs(result)
             examples.append({"mint_prefix": launch["mint"][:8],
                              "status": result["status"],
                              "marked_return_pct": result["total_marked_return_pct"],
+                             "estimated_net_marked_return_pct": adjusted["estimated_net_marked_return_pct"],
                              "events": len(result["events"])})
     print("PAPER_DIAGNOSTIC", json.dumps({"launches": len(launches),
           "snapshots": len(rows), "classification": dict(counts),
           "illustrative_replays": examples, "live_trades": 0,
-          "note": "no simulated execution or fee/slippage model"}, sort_keys=True))
+          "note": "hypothetical fees/slippage only; no actual execution or liquidity impact model"}, sort_keys=True))
     return 0
 
 if __name__ == "__main__":
