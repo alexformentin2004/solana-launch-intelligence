@@ -26,7 +26,7 @@ def db(method, path, data=None):
         return json.load(response) if method == "GET" else None
 
 def candidates():
-    # Only rows whose last attempt is old enough are eligible; no repeated 429 bursts.
+    # Retry only older audits to avoid repeated 429 bursts; newly discovered audits wait for the cooldown.
     cutoff = (datetime.now(timezone.utc) - timedelta(minutes=RETRY_MINUTES)).isoformat()
     path = ("token_audits?select=mint,metrics,audited_at&"
             "order=audited_at.asc&limit=100&audited_at=lt." +
