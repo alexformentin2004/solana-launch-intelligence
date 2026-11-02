@@ -1,7 +1,7 @@
 """Historical 1-minute candle coverage audit. Read-only; no trading.
 
 Usage: SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... python historical_candle_audit.py
-Optional: HISTORICAL_MAX_POOLS=20 (default), HISTORICAL_DELAY_SECONDS=3.
+Optional: HISTORICAL_MAX_POOLS=40, HISTORICAL_OFFSET=0, HISTORICAL_DELAY_SECONDS=5.
 """
 import json
 import re
@@ -82,11 +82,13 @@ def main():
     if not url or not key:
         print("Missing Supabase credentials", file=sys.stderr)
         return 2
-    max_pools = max(1, min(500, int(os.getenv("HISTORICAL_MAX_POOLS", "20"))))
+    max_pools = max(1, min(60, int(os.getenv("HISTORICAL_MAX_POOLS", "40"))))
+    offset = max(0, int(os.getenv("HISTORICAL_OFFSET", "0")))
     delay = max(2.1, float(os.getenv("HISTORICAL_DELAY_SECONDS", "5")))
     headers = {"apikey": key, "Authorization": "Bearer " + key}
     launches = request_json(url + "/rest/v1/launches?select=mint,created_at,raw"
-                            "&order=first_seen_at.desc&limit=" + str(max_pools), headers) or []
+                            "&order=first_seen_at.desc&limit=" + str(max_pools)
+                            + "&offset=" + str(offset), headers) or []
     summary = {}
     error_categories = {}
     results = []
@@ -116,7 +118,8 @@ def main():
         results.append({"mint_prefix": launch["mint"][:8], **result})
         time.sleep(delay)
     print("HISTORICAL_CANDLE_AUDIT", json.dumps({
-        "pools_checked": len(launches), "classification": summary,
+        "pools_checked": len(launches), "offset": offset,
+        "classification": summary,
         "error_categories": error_categories,
         "results": results,
         "roi_pct": None,
