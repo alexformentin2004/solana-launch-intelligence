@@ -52,15 +52,28 @@ def fallback_preflight():
     except RPCMethodError:
         return False
 
+def supply_with_fallback(mint):
+    """Try the configured fallback when the primary supply endpoint is throttled."""
+    params = [mint, {"commitment":"confirmed"}]
+    try:
+        return call("getTokenSupply", params), "primary"
+    except RPCMethodError as exc:
+        if exc.kind != "rate_limited" or not FALLBACK_RPC or FALLBACK_RPC == RPC:
+            raise
+        try:
+            return call("getTokenSupply", params, endpoint=FALLBACK_RPC), "fallback"
+        except RPCMethodError as fallback_error:
+            raise fallback_error from exc
+
 def concentration(mint):
-    supply = call("getTokenSupply", [mint, {"commitment":"confirmed"}])
+    supply, supply_provider = supply_with_fallback(mint)
     try:
         total = int(supply["value"]["amount"])
     except (KeyError, TypeError, ValueError) as exc:
         raise RPCMethodError("getTokenSupply", "invalid_response", "missing amount") from exc
     if total <= 0:
         return {"status":"unavailable","reason":"zero_supply",
-                "supply_check":"verified"}
+                "supply_check":"verified","supply_provider":supply_provider}
     provider = "primary"
     try:
         accounts = call("getTokenLargestAccounts", [mint, {"commitment":"confirmed"}])
@@ -74,7 +87,9 @@ def concentration(mint):
             if second.kind != "rate_limited" or not FALLBACK_RPC or FALLBACK_RPC == RPC:
                 raise
             if not fallback_preflight():
-                raise second
+                raise RPCMethodError("getTokenLargestAccounts", "fallback_preflight_failed",
+                                     "Fallback did not return valid token accounts for probe mint",
+                                     False, "fallback") from second
             accounts = call("getTokenLargestAccounts", [mint, {"commitment":"confirmed"}], endpoint=FALLBACK_RPC)
             provider = "fallback"
     try:
@@ -83,10 +98,10 @@ def concentration(mint):
         raise RPCMethodError("getTokenLargestAccounts", "invalid_response", "invalid accounts") from exc
     if not amounts:
         return {"status":"unavailable","reason":"no_token_accounts_returned",
-                "supply_check":"verified","largest_accounts_check":"verified","largest_accounts_provider":provider}
+                "supply_check":"verified","largest_accounts_check":"verified","largest_accounts_provider":provider,"supply_provider":supply_provider}
     return {"status":"verified","unit":"token_accounts_not_unique_wallets",
             "supply_check":"verified","largest_accounts_check":"verified",
-            "largest_accounts_provider":provider,
+            "largest_accounts_provider":provider,"supply_provider":supply_provider,
             "top1_pct":round(100*sum(amounts[:1])/total,2),
             "top10_pct":round(100*sum(amounts[:10])/total,2),
             "top20_pct":round(100*sum(amounts[:20])/total,2),
