@@ -1,0 +1,98 @@
+"""Historical 1-minute candle coverage audit. Read-only; no trading.
+
+Usage: SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... python historical_candle_audit.py
+Optional: HISTORICAL_MAX_POOLS=20 (default), HISTORICAL_DELAY_SECONDS=3.
+"""
+import json
+import os
+import sys
+import time
+from datetime import datetime, timezone
+from urllib.parse import quote
+from collector import request_json
+from history_worker import pool_address
+
+API = "https://api.geckoterminal.com/api/v2/networks/solana/pools/"
+def timestamp(value):
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+
+def analyze(launch, candles):
+    """Classify minute candles without pretending intraminute execution is known."""
+    try:
+        born = timestamp(launch["created_at"])
+    except (KeyError, TypeError, ValueError):
+        return {"status": "unknown_creation"}
+    valid = {}
+    for candle in candles:
+        try:
+            t, op, high, low, close, volume = candle[:6]
+            t = int(t)
+            prices = [float(x) for x in (op, high, low, close)]
+            if min(prices) <= 0 or prices[2] > min(prices) or prices[1] < max(prices):
+                continue
+            if born - 60 <= t <= born + 3600:
+                valid[t] = prices
+        except (TypeError, ValueError, IndexError):
+            continue
+    bars = sorted(valid)
+    # Minute candles cannot establish an executable quote at a precise 30-90s entry.
+    entry_bars = [t for t in bars if t <= born + 90 and t + 60 >= born + 30]
+    if not entry_bars:
+        return {"status": "no_entry_overlap", "minute_bars": len(bars)}
+    entry_t = entry_bars[0]
+    after = [t for t in bars if t > entry_t]
+    if not after:
+        return {"status": "entry_bar_only", "minute_bars": len(bars)}
+    gaps = [b-a for a,b in zip([entry_t]+after, after)]
+    return {"status": "exploratory_candles" if max(gaps) <= 60 else "gapped_candles",
+            "minute_bars": len(bars), "entry_bar_start": entry_t,
+            "max_gap_seconds": max(gaps),
+            "entry_open_usd": valid[entry_t][0],
+            "last_close_usd": valid[after[-1]][3],
+            "note": "No 30-90s executable entry or TP/SL order can be established from OHLC."}
+
+def main():
+    url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not url or not key:
+        print("Missing Supabase credentials", file=sys.stderr)
+        return 2
+    max_pools = max(1, min(500, int(os.getenv("HISTORICAL_MAX_POOLS", "20"))))
+    delay = max(2.1, float(os.getenv("HISTORICAL_DELAY_SECONDS", "3")))
+    headers = {"apikey": key, "Authorization": "Bearer " + key}
+    launches = request_json(url + "/rest/v1/launches?select=mint,created_at,raw"
+                            "&order=first_seen_at.desc&limit=" + str(max_pools), headers) or []
+    summary = {}
+    results = []
+    for launch in launches:
+        address = pool_address(launch.get("raw"))
+        if not address:
+            status = "missing_pool_address"
+            result = {"status": status}
+        else:
+            try:
+                # Fetch candles up to 1h after launch, rather than only the latest bars.
+                before = int(timestamp(launch["created_at"]) + 3660)
+                endpoint = (API + quote(address, safe="") + "/ohlcv/minute"
+                            + "?aggregate=1&limit=120&currency=usd&token=base"
+                            + "&before_timestamp=" + str(before))
+                response = request_json(endpoint) or {}
+                candles = (((response.get("data") or {}).get("attributes") or {})
+                           .get("ohlcv_list") or [])
+                result = analyze(launch, candles)
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                result = {"status": "api_error", "error_type": type(exc).__name__}
+        status = result["status"]
+        summary[status] = summary.get(status, 0) + 1
+        results.append({"mint_prefix": launch["mint"][:8], **result})
+        time.sleep(delay)
+    print("HISTORICAL_CANDLE_AUDIT", json.dumps({
+        "pools_checked": len(launches), "classification": summary,
+        "results": results,
+        "roi_pct": None,
+        "warning": "OHLC minute candles are not executable prices; no ROI calculated."
+    }, sort_keys=True))
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
