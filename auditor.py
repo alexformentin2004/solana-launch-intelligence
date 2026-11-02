@@ -40,8 +40,12 @@ def audit(mint, pool, chain=None, concentration=None):
             findings.append({"code":"freeze_authority_active","severity":"high"})
         else:
             findings.append({"code":"freeze_authority_revoked","severity":"info"})
+    if chain and chain.get("status") == "verified" and chain.get("extensions_checked") is False:
+        pending.append("token_extensions")
+        findings.append({"code":"token_2022_extensions_unchecked","severity":"unknown"})
     if concentration and concentration.get("status") == "verified":
-        pending = [x for x in pending if x != "holder_concentration"]
+        # Top token accounts are not unique holders; retain holder analysis as pending.
+        pending.append("token_account_owner_mapping")
         top10 = concentration.get("top10_pct",0)
         if top10 >= 80:
             score += 20
