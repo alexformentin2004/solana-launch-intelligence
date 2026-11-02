@@ -2,7 +2,7 @@ import unittest
 from onchain import _base58, SPL_TOKEN, TOKEN_2022
 from auditor import audit
 from unittest.mock import patch
-from concentration import concentration
+from concentration import concentration, RPCMethodError
 from rpc_worker import eligible, priority
 from datetime import datetime, timedelta, timezone
 
@@ -27,6 +27,19 @@ class AuditTests(unittest.TestCase):
         with patch("concentration.call",side_effect=[
             {"value":{"amount":"1000"}},{"value":[]}]):
             self.assertEqual(concentration("mint")["status"],"unavailable")
+    def test_supply_zero_skips_largest_accounts(self):
+        with patch("concentration.call", return_value={"value":{"amount":"0"}}) as rpc:
+            result=concentration("mint")
+        self.assertEqual(result["reason"],"zero_supply")
+        rpc.assert_called_once()
+    def test_rpc_error_identifies_method(self):
+        with patch("concentration.call", side_effect=[
+            {"value":{"amount":"1000"}},
+            RPCMethodError("getTokenLargestAccounts","rate_limited","HTTP 429")]):
+            with self.assertRaises(RPCMethodError) as ctx:
+                concentration("mint")
+        self.assertEqual(ctx.exception.method,"getTokenLargestAccounts")
+        self.assertEqual(ctx.exception.kind,"rate_limited")
     def test_rpc_queue_max_attempts(self):
         row={"metrics":{"rpc_queue":{"attempts":5},"onchain":{"status":"error"}}}
         self.assertFalse(eligible(row))
