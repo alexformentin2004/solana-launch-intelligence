@@ -1,6 +1,8 @@
 import unittest
 from onchain import _base58, SPL_TOKEN, TOKEN_2022
 from auditor import audit
+from unittest.mock import patch
+from concentration import concentration
 
 class AuditTests(unittest.TestCase):
     def test_base58_authority_encoding(self):
@@ -9,6 +11,20 @@ class AuditTests(unittest.TestCase):
     def test_token_program_ids(self):
         self.assertNotEqual(SPL_TOKEN, TOKEN_2022)
         self.assertEqual(TOKEN_2022, "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
+    def test_concentration_top_accounts(self):
+        def fake_rpc(method, params):
+            if method == "getTokenSupply":
+                return {"value":{"amount":"1000"}}
+            return {"value":[{"amount":"600"},{"amount":"200"}]}
+        with patch("concentration.call", side_effect=fake_rpc):
+            result=concentration("mint")
+        self.assertEqual(result["top1_pct"],60.0)
+        self.assertEqual(result["top10_pct"],80.0)
+        self.assertEqual(result["unit"],"token_accounts_not_unique_wallets")
+    def test_empty_concentration_unavailable(self):
+        with patch("concentration.call",side_effect=[
+            {"value":{"amount":"1000"}},{"value":[]}]):
+            self.assertEqual(concentration("mint")["status"],"unavailable")
     def test_low_liquidity(self):
         a = audit("mint", {"attributes":{"reserve_in_usd":"500","transactions":{"m5":{"buys":1,"sells":8}}}})
         self.assertEqual(a["risk_level"], "high")
