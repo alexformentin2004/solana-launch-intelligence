@@ -51,7 +51,7 @@ class AuditTests(unittest.TestCase):
             result=concentration("mint")
         self.assertEqual(result["status"],"verified")
         self.assertEqual(rpc.call_count,3)
-        pause.assert_called_once_with(5)
+        pause.assert_called_once_with(2)
     def test_largest_accounts_free_fallback(self):
         error=RPCMethodError("getTokenLargestAccounts","rate_limited","HTTP 429")
         with patch("concentration.FALLBACK_RPC","https://rpc.magicblock.app/mainnet"), patch("concentration.call",side_effect=[
