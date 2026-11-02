@@ -35,9 +35,12 @@ class AuditTests(unittest.TestCase):
     def test_rpc_error_identifies_method(self):
         with patch("concentration.call", side_effect=[
             {"value":{"amount":"1000"}},
-            RPCMethodError("getTokenLargestAccounts","rate_limited","HTTP 429")]):
+            RPCMethodError("getTokenLargestAccounts","rate_limited","HTTP 429"),
+            RPCMethodError("getTokenLargestAccounts","rate_limited","HTTP 429")]) as rpc, patch("concentration.time.sleep") as pause:
             with self.assertRaises(RPCMethodError) as ctx:
                 concentration("mint")
+        self.assertEqual(rpc.call_count, 3)
+        pause.assert_called_once_with(5)
         self.assertEqual(ctx.exception.method,"getTokenLargestAccounts")
         self.assertEqual(ctx.exception.kind,"rate_limited")
     def test_largest_accounts_retry_once(self):
