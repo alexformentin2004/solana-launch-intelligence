@@ -71,6 +71,28 @@ class AuditTests(unittest.TestCase):
         with patch("concentration.FALLBACK_RPC","https://rpc.magicblock.app/mainnet"), patch(
             "concentration.call", return_value={"value":[]}):
             self.assertFalse(fallback_preflight())
+    def test_supply_fallback_after_primary_429(self):
+        from concentration import supply_with_fallback
+        with patch("concentration.FALLBACK_RPC","https://rpc.magicblock.app/mainnet"), patch(
+            "concentration.call",side_effect=[
+                RPCMethodError("getTokenSupply","rate_limited","HTTP 429"),
+                {"value":{"amount":"1000"}}]) as rpc:
+            supply, provider = supply_with_fallback("mint")
+        self.assertEqual(provider,"fallback")
+        self.assertEqual(supply["value"]["amount"],"1000")
+        self.assertEqual(rpc.call_count,2)
+
+    def test_fallback_probe_failure_is_diagnostic(self):
+        error=RPCMethodError("getTokenLargestAccounts","rate_limited","HTTP 429")
+        with patch("concentration.FALLBACK_RPC","https://rpc.magicblock.app/mainnet"), patch(
+            "concentration.call",side_effect=[
+                {"value":{"amount":"1000"}},error,error]), patch(
+            "concentration.fallback_preflight",return_value=False), patch("concentration.time.sleep"):
+            with self.assertRaises(RPCMethodError) as ctx:
+                concentration("mint")
+        self.assertEqual(ctx.exception.kind,"fallback_preflight_failed")
+        self.assertEqual(ctx.exception.provider,"fallback")
+
     def test_rpc_error_provider(self):
         self.assertEqual(RPCMethodError("getTokenLargestAccounts","http_error",
                          "HTTP 403",False,"fallback").provider,"fallback")
