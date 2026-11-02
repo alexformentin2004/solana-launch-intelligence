@@ -14,6 +14,8 @@ URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 LIMIT = 1
 RETRY_MINUTES = 60
+MAX_ATTEMPTS = 5
+PERMANENT_ERRORS = {"unsupported_program", "unavailable"}
 
 def db(method, path, data=None):
     headers = {"apikey": KEY, "Authorization": "Bearer " + KEY,
@@ -25,15 +27,31 @@ def db(method, path, data=None):
     with urllib.request.urlopen(request, timeout=20) as response:
         return json.load(response) if method == "GET" else None
 
+def eligible(row, now=None):
+    now = now or datetime.now(timezone.utc)
+    metrics = row.get("metrics") or {}
+    queue = metrics.get("rpc_queue") or {}
+    if int(queue.get("attempts") or 0) >= MAX_ATTEMPTS:
+        return False
+    next_at = queue.get("next_attempt_at")
+    if next_at:
+        try:
+            if datetime.fromisoformat(next_at.replace("Z", "+00:00")) > now:
+                return False
+        except ValueError:
+            pass
+    chain = metrics.get("onchain") or {}
+    holders = metrics.get("concentration") or {}
+    if chain.get("status") in PERMANENT_ERRORS:
+        return False
+    return chain.get("status") != "verified" or holders.get("status") not in ("verified", "unavailable")
+
 def candidates():
-    # Retry only older audits to avoid repeated 429 bursts; newly discovered audits wait for the cooldown.
-    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=RETRY_MINUTES)).isoformat()
-    path = ("token_audits?select=mint,metrics,audited_at&"
-            "order=audited_at.asc&limit=100&audited_at=lt." +
-            urllib.parse.quote(cutoff, safe=""))
+    # Scan newest audit rows first, but process only audits whose cooldown expired.
+    path = "token_audits?select=mint,metrics,audited_at&order=audited_at.desc&limit=500"
     rows = db("GET", path)
-    return [r for r in rows if (r.get("metrics") or {}).get("onchain", {}).get("status") != "verified"
-            or (r.get("metrics") or {}).get("concentration", {}).get("status") != "verified"]
+    now = datetime.now(timezone.utc)
+    return [r for r in rows if eligible(r, now)]
 
 def process(row):
     mint = row["mint"]
@@ -41,6 +59,8 @@ def process(row):
     chain = old.get("onchain") or {"status":"not_checked"}
     holders = old.get("concentration") or {"status":"not_checked"}
     throttled = False
+    previous = (old.get("rpc_queue") or {})
+    attempts = int(previous.get("attempts") or 0) + 1
     if chain.get("status") != "verified":
         try:
             chain = mint_checks(mint)
@@ -62,6 +82,14 @@ def process(row):
                                                  "sells":old.get("sells_5m")}},
                           "pool_created_at":old.get("pool_created_at")}}
     result = audit(mint, pool, chain, holders)
+    cooldown = min(1440, RETRY_MINUTES * (2 ** min(attempts - 1, 4)))
+    result["metrics"]["rpc_queue"] = {
+        "attempts": attempts,
+        "last_attempt_at": datetime.now(timezone.utc).isoformat(),
+        "next_attempt_at": (datetime.now(timezone.utc) + timedelta(minutes=cooldown)).isoformat(),
+        "max_attempts": MAX_ATTEMPTS,
+        "last_rate_limited": throttled,
+    }
     db("PATCH", "token_audits?mint=eq." + urllib.parse.quote(mint, safe=""),
        {k:v for k,v in result.items() if k != "mint"})
     print("RPC audit",mint[:8],"onchain",chain.get("status"),
