@@ -3,7 +3,7 @@ from onchain import _base58, SPL_TOKEN, TOKEN_2022
 from auditor import audit
 from unittest.mock import patch
 from concentration import concentration
-from rpc_worker import eligible
+from rpc_worker import eligible, priority
 from datetime import datetime, timedelta, timezone
 
 class AuditTests(unittest.TestCase):
@@ -40,6 +40,24 @@ class AuditTests(unittest.TestCase):
     def test_rpc_queue_pending(self):
         row={"metrics":{"onchain":{"status":"verified"},"concentration":{"status":"error"}}}
         self.assertTrue(eligible(row))
+    def test_rpc_priority_liquidity_and_volume(self):
+        low={"metrics":{"liquidity_usd":100,"volume_5m_usd":10}}
+        high={"metrics":{"liquidity_usd":100000,"volume_5m_usd":10000}}
+        self.assertGreater(priority(high),priority(low))
+    def test_partial_verification_priority(self):
+        base={"liquidity_usd":1000,"volume_5m_usd":100}
+        pending={"metrics":dict(base)}
+        verified={"metrics":{**base,"onchain":{"status":"verified"}}}
+        self.assertGreater(priority(verified),priority(pending))
+    def test_token_2022_extensions_pending(self):
+        chain={"status":"verified","mint_authority_present":False,
+               "freeze_authority_present":False,"extensions_checked":False}
+        result=audit("mint",{"attributes":{}},chain)
+        self.assertIn("token_extensions",result["checks_pending"])
+    def test_concentration_is_not_wallet_mapping(self):
+        result=audit("mint",{"attributes":{}},concentration={"status":"verified","top10_pct":80})
+        self.assertIn("token_account_owner_mapping",result["checks_pending"])
+        self.assertIn("holder_concentration",result["checks_pending"])
     def test_low_liquidity(self):
         a = audit("mint", {"attributes":{"reserve_in_usd":"500","transactions":{"m5":{"buys":1,"sells":8}}}})
         self.assertEqual(a["risk_level"], "high")
