@@ -1,0 +1,43 @@
+name: Historical Solana candle audit
+on:
+  workflow_dispatch:
+    inputs:
+      offset:
+        description: "Skip this many most-recent launches (0, 40, 80...)"
+        required: true
+        default: "0"
+        type: string
+      batch_size:
+        description: "Number of pools (1-60)"
+        required: true
+        default: "40"
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: solana-historical-audit
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check configuration
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_SERVICE_ROLE_KEY"
+      - name: Audit historical OHLCV minute candles
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          HISTORICAL_OFFSET: ${{ inputs.offset }}
+          HISTORICAL_MAX_POOLS: ${{ inputs.batch_size }}
+          HISTORICAL_DELAY_SECONDS: '5'
+        run: python historical_candle_audit.py
