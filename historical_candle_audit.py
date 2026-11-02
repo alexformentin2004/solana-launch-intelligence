@@ -9,6 +9,7 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
+import urllib.error
 from urllib.parse import quote
 from collector import request_json
 from history_worker import pool_address
@@ -65,6 +66,16 @@ def safe_error(exc):
         return "invalid_response_or_timestamp"
     return type(exc).__name__
 
+def fetch_candles(endpoint, tries=4):
+    """Retry only HTTP 429 with bounded backoff; never return fabricated candles."""
+    for attempt in range(tries):
+        try:
+            return request_json(endpoint) or {}
+        except ValueError as exc:
+            if safe_error(exc) != "rate_limited" or attempt == tries - 1:
+                raise
+            time.sleep(min(60, 8 * (attempt + 1)))
+
 def main():
     url = os.getenv("SUPABASE_URL", "").rstrip("/")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -72,7 +83,7 @@ def main():
         print("Missing Supabase credentials", file=sys.stderr)
         return 2
     max_pools = max(1, min(500, int(os.getenv("HISTORICAL_MAX_POOLS", "20"))))
-    delay = max(2.1, float(os.getenv("HISTORICAL_DELAY_SECONDS", "3")))
+    delay = max(2.1, float(os.getenv("HISTORICAL_DELAY_SECONDS", "5")))
     headers = {"apikey": key, "Authorization": "Bearer " + key}
     launches = request_json(url + "/rest/v1/launches?select=mint,created_at,raw"
                             "&order=first_seen_at.desc&limit=" + str(max_pools), headers) or []
@@ -91,7 +102,7 @@ def main():
                 endpoint = (API + quote(address, safe="") + "/ohlcv/minute"
                             + "?aggregate=1&limit=120&currency=usd&token=base"
                             + "&before_timestamp=" + str(before))
-                response = request_json(endpoint) or {}
+                response = fetch_candles(endpoint)
                 candles = (((response.get("data") or {}).get("attributes") or {})
                            .get("ohlcv_list") or [])
                 result = analyze(launch, candles)
