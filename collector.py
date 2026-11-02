@@ -16,9 +16,13 @@ def request_json(url, headers=None, method="GET", data=None):
         "Accept": "application/json", "User-Agent": "solana-launch-intelligence/0.1",
         **(headers or {}),
     })
-    with urllib.request.urlopen(req, timeout=25) as response:
-        body = response.read()
-        return json.loads(body) if body else None
+    try:
+        with urllib.request.urlopen(req, timeout=25) as response:
+            body = response.read()
+            return json.loads(body) if body else None
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:700]
+        raise ValueError(f"HTTP {exc.code} from {url.split('?')[0]}: {detail}") from exc
 
 def db(table, records, prefer="resolution=merge-duplicates,return=minimal", on_conflict=None):
     if not records:
@@ -42,7 +46,7 @@ def main():
     try:
         response = request_json(API)
         pools = response.get("data", [])
-        launches, snapshots = {}, []
+        launches, snapshots = {}, {}
         for pool in pools:
             attrs = pool.get("attributes") or {}
             rel = (pool.get("relationships") or {}).get("base_token") or {}
@@ -56,7 +60,7 @@ def main():
                 "created_at": created, "first_seen_at": now, "last_seen_at": now,
                 "raw": {"pool_id": pool.get("id"), "pool_name": attrs.get("name")},
             }
-            snapshots.append({
+            snapshots[mint] = {
                 "mint": mint, "observed_at": now,
                 "price_usd": attrs.get("base_token_price_usd"),
                 "liquidity_usd": attrs.get("reserve_in_usd"),
@@ -64,11 +68,11 @@ def main():
                 "buys_5m": (attrs.get("transactions") or {}).get("m5", {}).get("buys"),
                 "sells_5m": (attrs.get("transactions") or {}).get("m5", {}).get("sells"),
                 "raw": {"pool_id": pool.get("id")},
-            })
+            }
         # Preserve original first_seen_at and created_at for previously discovered tokens.
         # Ignore conflicts rather than overwriting historical launch metadata.
         db("launches", list(launches.values()), "resolution=ignore-duplicates,return=minimal", "mint")
-        db("token_snapshots", snapshots)
+        db("token_snapshots", list(snapshots.values()))
         db("collection_runs", [{**run, "finished_at": datetime.now(timezone.utc).isoformat(),
                                 "status": "success", "items_seen": len(pools),
                                 "items_written": len(snapshots)}], "return=minimal")
