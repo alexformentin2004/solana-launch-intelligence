@@ -1,7 +1,14 @@
 import unittest
+from onchain import _base58, SPL_TOKEN, TOKEN_2022
 from auditor import audit
 
 class AuditTests(unittest.TestCase):
+    def test_base58_authority_encoding(self):
+        self.assertEqual(_base58(bytes(32)), "1" * 32)
+        self.assertEqual(_base58(bytes([0] * 31 + [1])), "1" * 31 + "2")
+    def test_token_program_ids(self):
+        self.assertNotEqual(SPL_TOKEN, TOKEN_2022)
+        self.assertEqual(TOKEN_2022, "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
     def test_low_liquidity(self):
         a = audit("mint", {"attributes":{"reserve_in_usd":"500","transactions":{"m5":{"buys":1,"sells":8}}}})
         self.assertEqual(a["risk_level"], "high")
