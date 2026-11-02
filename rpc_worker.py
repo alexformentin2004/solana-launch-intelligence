@@ -7,7 +7,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from onchain import mint_checks
-from concentration import concentration
+from concentration import concentration, RPCMethodError
 from auditor import audit
 
 URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
@@ -83,6 +83,11 @@ def process(row):
         time.sleep(2)
         try:
             holders = concentration(mint)
+        except RPCMethodError as exc:
+            throttled = exc.kind == "rate_limited"
+            holders = {"status":"error","failed_method":exc.method,
+                       "error_kind":exc.kind,"error_detail":exc.detail,
+                       "retryable":exc.retryable}
         except (OSError, ValueError, KeyError, TypeError) as exc:
             throttled = getattr(exc, "code", None) == 429
             holders = {"status":"error","error_type":type(exc).__name__,
@@ -104,7 +109,9 @@ def process(row):
     db("PATCH", "token_audits?mint=eq." + urllib.parse.quote(mint, safe=""),
        {k:v for k,v in result.items() if k != "mint"})
     print("RPC audit",mint[:8],"onchain",chain.get("status"),
-          "concentration",holders.get("status"),"rate_limited",throttled)
+          "concentration",holders.get("status"),
+          "failed_method",holders.get("failed_method"),
+          "error_kind",holders.get("error_kind"),"rate_limited",throttled)
 
 def main():
     if not URL or not KEY:
