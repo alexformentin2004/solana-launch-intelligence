@@ -55,12 +55,17 @@ class AuditTests(unittest.TestCase):
     def test_largest_accounts_free_fallback(self):
         error=RPCMethodError("getTokenLargestAccounts","rate_limited","HTTP 429")
         with patch("concentration.FALLBACK_RPC","https://solana-rpc.publicnode.com"), patch("concentration.call",side_effect=[
-            {"value":{"amount":"1000"}},error,error,{"value":[{"amount":"500"}]}]) as rpc, patch("concentration.time.sleep"):
+            {"value":{"amount":"1000"}},error,error,{"solana-core":"1.18.0"},{"value":[{"amount":"500"}]}]) as rpc, patch("concentration.time.sleep"):
             result=concentration("mint")
         self.assertEqual(result["largest_accounts_provider"],"fallback")
         self.assertEqual(result["top1_pct"],50)
-        self.assertEqual(rpc.call_count,4)
+        self.assertEqual(rpc.call_count,5)
         self.assertEqual(rpc.call_args.kwargs["endpoint"],"https://solana-rpc.publicnode.com")
+    def test_fallback_preflight_rejects_403(self):
+        from concentration import fallback_preflight
+        with patch("concentration.FALLBACK_RPC","https://example.invalid"), patch(
+            "concentration.call", side_effect=RPCMethodError("getVersion","http_error","HTTP 403",False,"fallback")):
+            self.assertFalse(fallback_preflight())
     def test_rpc_error_provider(self):
         self.assertEqual(RPCMethodError("getTokenLargestAccounts","http_error",
                          "HTTP 403",False,"fallback").provider,"fallback")
