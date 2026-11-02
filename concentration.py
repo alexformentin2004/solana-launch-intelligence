@@ -21,6 +21,8 @@ def concentration(mint):
     if total<=0:
         return {"status":"unavailable","reason":"zero_supply"}
     amounts=[int(x["amount"]) for x in accounts["value"]]
+    if not amounts:
+        return {"status":"unavailable","reason":"no_token_accounts_returned"}
     return {"status":"verified","unit":"token_accounts_not_unique_wallets",
             "top1_pct":round(100*sum(amounts[:1])/total,2),
             "top10_pct":round(100*sum(amounts[:10])/total,2),
