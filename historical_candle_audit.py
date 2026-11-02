@@ -55,12 +55,14 @@ def analyze(launch, candles):
 def safe_error(exc):
     """Return actionable HTTP diagnostics without leaking URLs or credentials."""
     message = str(exc)
-    match = re.search(r"HTTP (\\d{3})", message)
+    match = re.search(r"HTTP (\d{3})", message)
     if match:
         code = int(match.group(1))
         return ("rate_limited" if code == 429 else
                 "not_found" if code == 404 else
                 "api_http_" + str(code))
+    if isinstance(exc, ValueError):
+        return "invalid_response_or_timestamp"
     return type(exc).__name__
 
 def main():
