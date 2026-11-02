@@ -35,7 +35,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Run auditor unit tests
-        run: python -m unittest -v test_auditor.py test_paper_strategy.py test_paper_report.py test_persistent_monitor.py
+        run: python -m unittest -v test_auditor.py test_paper_strategy.py test_paper_report.py test_persistent_monitor.py test_execution_costs.py
       - name: Poll new pools
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -56,3 +56,11 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python paper_report.py
+
+      - name: Audit historical minute candles (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          HISTORICAL_MAX_POOLS: '20'
+        run: python historical_candle_audit.py
