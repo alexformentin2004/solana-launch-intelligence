@@ -35,7 +35,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Run auditor unit tests
-        run: python -m unittest -v test_auditor.py test_paper_strategy.py
+        run: python -m unittest -v test_auditor.py test_paper_strategy.py test_paper_report.py
       - name: Poll new pools
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -51,3 +51,8 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python rpc_worker.py
+      - name: Diagnose paper trading historical coverage
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python paper_report.py
