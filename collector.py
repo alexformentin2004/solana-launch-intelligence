@@ -70,13 +70,17 @@ def main():
                 try:
                     chain = mint_checks(mint)
                 except (OSError, ValueError, KeyError, TypeError) as exc:
-                    print(f"Optional RPC check unavailable for {mint[:8]}: {type(exc).__name__}")
+                    chain = {"status":"error","error_type":type(exc).__name__,
+                             "error_detail":str(exc)[:180]}
+                    print(f"Optional RPC check unavailable for {mint[:8]}: {type(exc).__name__}: {str(exc)[:180]}")
             concentration = None
-            if chain is not None:
+            if chain is not None and chain.get("status") == "verified":
                 try:
                     concentration = account_concentration(mint)
                 except (OSError, ValueError, KeyError, TypeError) as exc:
-                    print(f"Optional concentration check unavailable for {mint[:8]}: {type(exc).__name__}")
+                    concentration = {"status":"error","error_type":type(exc).__name__,
+                                     "error_detail":str(exc)[:180]}
+                    print(f"Optional concentration check unavailable for {mint[:8]}: {type(exc).__name__}: {str(exc)[:180]}")
             audits[mint] = audit(mint, pool, chain, concentration)
             snapshots[mint] = {
                 "mint": mint, "observed_at": now,
