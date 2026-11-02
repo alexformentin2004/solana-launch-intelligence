@@ -72,6 +72,7 @@ def process(row):
     throttled = False
     previous = (old.get("rpc_queue") or {})
     attempts = int(previous.get("attempts") or 0) + 1
+    print("RPC_STAGE", "mint_check", "needed", chain.get("status") != "verified", flush=True)
     if chain.get("status") != "verified":
         try:
             chain = mint_checks(mint)
@@ -79,7 +80,10 @@ def process(row):
             throttled = getattr(exc, "code", None) == 429
             chain = {"status":"error","error_type":type(exc).__name__,
                      "error_detail":str(exc)[:150]}
+    print("RPC_STAGE", "concentration_eligibility", "chain", chain.get("status"),
+          "holders", holders.get("status"), "throttled", throttled, flush=True)
     if chain.get("status") == "verified" and holders.get("status") != "verified" and not throttled:
+        print("RPC_STAGE", "concentration_started", flush=True)
         time.sleep(2)
         try:
             holders = concentration(mint)
@@ -121,7 +125,9 @@ def main():
     rows = candidates()
     for row in rows[:LIMIT]:
         process(row)
-    print("RPC queue candidates",len(rows),"processed",min(len(rows),LIMIT))
+    print("RPC queue candidates",len(rows),"processed",min(len(rows),LIMIT), flush=True)
+    if not rows:
+        print("RPC_STAGE no_eligible_audits; check cooldown, max_attempts, and queue window", flush=True)
 
 if __name__ == "__main__":
     main()
