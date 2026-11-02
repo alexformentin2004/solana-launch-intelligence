@@ -61,6 +61,11 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(result["top1_pct"],50)
         self.assertEqual(rpc.call_count,4)
         self.assertEqual(rpc.call_args.kwargs["endpoint"],"https://solana-rpc.publicnode.com")
+    def test_rpc_error_provider(self):
+        self.assertEqual(RPCMethodError("getTokenLargestAccounts","http_error",
+                         "HTTP 403",False,"fallback").provider,"fallback")
+        self.assertFalse(RPCMethodError("getTokenLargestAccounts","http_error",
+                         "HTTP 403",False,"fallback").retryable)
     def test_rpc_queue_max_attempts(self):
         row={"metrics":{"rpc_queue":{"attempts":5},"onchain":{"status":"error"}}}
         self.assertFalse(eligible(row))
