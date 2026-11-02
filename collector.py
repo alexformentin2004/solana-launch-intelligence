@@ -5,6 +5,7 @@ import sys
 import urllib.error
 import urllib.request
 from auditor import audit
+from onchain import mint_checks
 from datetime import datetime, timezone
 
 API = "https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=1"
@@ -48,6 +49,7 @@ def main():
         response = request_json(API)
         pools = response.get("data", [])
         launches, snapshots, audits = {}, {}, {}
+        rpc_attempts = 0
         for pool in pools:
             attrs = pool.get("attributes") or {}
             rel = (pool.get("relationships") or {}).get("base_token") or {}
@@ -61,7 +63,14 @@ def main():
                 "created_at": created, "first_seen_at": now, "last_seen_at": now,
                 "raw": {"pool_id": pool.get("id"), "pool_name": attrs.get("name")},
             }
-            audits[mint] = audit(mint, pool)
+            chain = None
+            if mint not in audits and rpc_attempts < 3:
+                rpc_attempts += 1
+                try:
+                    chain = mint_checks(mint)
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    print(f"Optional RPC check unavailable for {mint[:8]}: {type(exc).__name__}")
+            audits[mint] = audit(mint, pool, chain)
             snapshots[mint] = {
                 "mint": mint, "observed_at": now,
                 "price_usd": attrs.get("base_token_price_usd"),
