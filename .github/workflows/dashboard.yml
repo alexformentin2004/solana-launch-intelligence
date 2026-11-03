@@ -10,6 +10,7 @@ on:
       - 'dashboard_export.py'
       - 'dashboard_paper_export.py'
       - 'dashboard_diagnostics.py'
+      - 'dashboard_embed.py'
       - '.github/workflows/dashboard.yml'
 permissions:
   contents: read
@@ -44,6 +45,8 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python dashboard_diagnostics.py
+      - name: Embed data into published dashboard
+        run: python dashboard_embed.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
