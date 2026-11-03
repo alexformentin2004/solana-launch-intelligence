@@ -13,10 +13,10 @@ from execution_costs import ExecutionCosts
 def ts(s):
     return datetime.fromisoformat(str(s).replace("Z","+00:00")).timestamp()
 
-def simulate(launch, bars):
+def simulate(launch, bars, entry_delay=30, initial_stop=.82, targets=None):
     bars = sorted(bars, key=lambda x:x["candle_at"])
     born = ts(launch["created_at"])
-    candidates = [i for i,b in enumerate(bars) if 30 <= ts(b["candle_at"])-born <= 90]
+    candidates = [i for i,b in enumerate(bars) if entry_delay <= ts(b["candle_at"])-born <= entry_delay+60]
     if not candidates:
         return {"status":"no_entry"}
     idx = candidates[0]
@@ -25,8 +25,9 @@ def simulate(launch, bars):
     entry = float(bars[idx]["open_usd"])
     if entry <= 0:
         return {"status":"invalid"}
-    remaining, proceeds, stop, next_tp = 1.0, 0.0, .82, 0
-    targets = [(2.,.4,1.85),(3.,.4,2.5),(4.,.2,None)]
+    remaining, proceeds, stop, next_tp = 1.0, 0.0, initial_stop, 0
+    if targets is None:
+        targets = [(2.,.4,1.85),(3.,.4,2.5),(4.,.2,None)]
     events=[]
     prev=ts(bars[idx]["candle_at"])
     for b in bars[idx+1:]:
@@ -112,6 +113,42 @@ def main():
         "costs":"0.5% entry/exit fees, 1% entry/exit slippage",
         "warning":"Exploratory, sparse OHLC; entry open proxy; intrabar stop first; no actual execution; no valid strategy ROI."
     },sort_keys=True))
+
+    def compare(label, delay=30, stop=.82, targets=None):
+        groups = {}
+        for launch in cohort:
+            bars = by_mint.get(launch["mint"], [])
+            if not bars:
+                continue
+            outcome = simulate(launch, bars, entry_delay=delay, initial_stop=stop, targets=targets)
+            groups.setdefault(outcome["status"], []).append(outcome)
+        completed = groups.get("closed", [])
+        marked = completed + groups.get("open_marked", [])
+        def summary(items):
+            return {"n": len(items), "positive": sum(v["net_pct"] > 0 for v in items),
+                    "mean_net_pct": round(sum(v["net_pct"] for v in items) / len(items), 3) if items else None}
+        print("SENSITIVITY", json.dumps({"label":label,"entry_delay_seconds":delay,
+            "classification":{k:len(v) for k,v in groups.items()},
+            "closed":summary(completed),"closed_plus_marked":summary(marked),
+            "tp1":sum("tp1" in v.get("events",[]) for v in marked),
+            "tp2":sum("tp2" in v.get("events",[]) for v in marked),
+            "tp3":sum("tp3" in v.get("events",[]) for v in marked)},sort_keys=True))
+    for delay in (30,60,90):
+        compare("entry_timing",delay)
+    for label,stop,targets in (
+        ("stop_12",.88,None),
+        ("stop_25",.75,None),
+        ("tp_50_100",.82,[(1.5,.5,1.),(2.,.5,None)]),
+        ("tp_100_200",.82,[(2.,.5,1.85),(3.,.5,None)]),
+    ):
+        compare(label,30,stop,targets)
+    quality = {"one_bar":0,"two_to_five":0,"six_to_ten":0,"over_ten":0,"any_gap":0}
+    for bars in by_mint.values():
+        n = len(bars)
+        quality["one_bar" if n==1 else "two_to_five" if n<=5 else "six_to_ten" if n<=10 else "over_ten"] += 1
+        if any(ts(bars[i]["candle_at"])-ts(bars[i-1]["candle_at"]) != 60 for i in range(1,n)):
+            quality["any_gap"] += 1
+    print("CANDLE_QUALITY",json.dumps(quality,sort_keys=True))
 
 if __name__=="__main__":
     main()
