@@ -5,6 +5,8 @@ on:
     paths:
       - 'scanner_health.py'
       - 'paper_signal_worker.py'
+      - 'paper_engine.py'
+      - 'test_paper_engine.py'
       - '.github/workflows/collect.yml'
   workflow_dispatch:
   schedule:
@@ -41,7 +43,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Run auditor unit tests
-        run: python -m unittest -v test_auditor.py test_paper_strategy.py test_paper_report.py test_persistent_monitor.py test_execution_costs.py
+        run: python -m unittest -v test_auditor.py test_paper_strategy.py test_paper_report.py test_persistent_monitor.py test_execution_costs.py test_paper_engine.py
       - name: Poll new pools
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -68,6 +70,12 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python paper_signal_worker.py
+
+      - name: Run observational paper engine
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python paper_engine.py
 
       - name: Scanner freshness and detection latency
         env:
