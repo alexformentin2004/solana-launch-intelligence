@@ -1,5 +1,10 @@
 name: Collect new Solana pools
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'scanner_health.py'
+      - '.github/workflows/collect.yml'
   workflow_dispatch:
   schedule:
     - cron: "*/5 * * * *"
