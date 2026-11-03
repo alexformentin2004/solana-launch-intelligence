@@ -7,6 +7,7 @@ on:
       - 'paper_signal_worker.py'
       - 'paper_engine.py'
       - 'test_paper_engine.py'
+      - 'test_paper_signals.py'
       - '.github/workflows/collect.yml'
   workflow_dispatch:
   schedule:
@@ -43,7 +44,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Run auditor unit tests
-        run: python -m unittest -v test_auditor.py test_paper_strategy.py test_paper_report.py test_persistent_monitor.py test_execution_costs.py test_paper_engine.py
+        run: python -m unittest -v test_auditor.py test_paper_strategy.py test_paper_report.py test_persistent_monitor.py test_execution_costs.py test_paper_engine.py test_paper_signals.py
       - name: Poll new pools
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
