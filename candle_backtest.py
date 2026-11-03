@@ -65,12 +65,27 @@ def simulate(launch, bars):
             "net_pct":round((proceeds*exit_factor-entry_cost)*100,3),
             "events":events}
 
+def fetch_all(url, headers, page_size=500):
+    """Read every PostgREST page; never silently backtest a truncated sample."""
+    rows = []
+    offset = 0
+    while True:
+        separator = "&" if "?" in url else "?"
+        page = request_json(f"{url}{separator}limit={page_size}&offset={offset}", headers) or []
+        if not isinstance(page, list):
+            raise ValueError("Expected a list from Supabase")
+        rows.extend(page)
+        if len(page) < page_size:
+            return rows
+        offset += len(page)
+
 def main():
     url=os.environ["SUPABASE_URL"].rstrip("/")
     key=os.environ["SUPABASE_SERVICE_ROLE_KEY"]
     headers={"apikey":key,"Authorization":"Bearer "+key}
-    cohort=request_json(url+"/rest/v1/historical_cohort?select=mint,created_at&order=first_seen_at.asc&limit=1000",headers) or []
-    candles=request_json(url+"/rest/v1/historical_candles?select=mint,candle_at,open_usd,high_usd,low_usd,close_usd&order=candle_at.asc&limit=10000",headers) or []
+    cohort=fetch_all(url+"/rest/v1/historical_cohort?select=mint,created_at&order=first_seen_at.asc,mint.asc",headers)
+    candles=fetch_all(url+"/rest/v1/historical_candles?select=mint,candle_at,open_usd,high_usd,low_usd,close_usd&order=mint.asc,candle_at.asc",headers)
+    print("BACKTEST_INPUT",json.dumps({"cohort":len(cohort),"candles":len(candles)}))
     by_mint={}
     for b in candles:
         by_mint.setdefault(b["mint"],[]).append(b)
