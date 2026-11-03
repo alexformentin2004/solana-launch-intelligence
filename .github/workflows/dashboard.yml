@@ -8,6 +8,7 @@ on:
     paths:
       - 'dashboard/**'
       - 'dashboard_export.py'
+      - 'dashboard_paper_export.py'
       - '.github/workflows/dashboard.yml'
 permissions:
   contents: read
@@ -32,6 +33,11 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python dashboard_export.py
+      - name: Export paper portfolio metrics
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python dashboard_paper_export.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
