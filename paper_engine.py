@@ -5,8 +5,8 @@ import json,os
 from datetime import datetime,timezone
 from urllib.parse import quote
 from collector import request_json,db
-URL=os.environ["SUPABASE_URL"].rstrip("/")
-KEY=os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+URL=os.environ.get("SUPABASE_URL","").rstrip("/")
+KEY=os.environ.get("SUPABASE_SERVICE_ROLE_KEY","")
 H={"apikey":KEY,"Authorization":"Bearer "+KEY}
 def fetch(table,fields,extra=""):
     return request_json(URL+"/rest/v1/"+table+"?select="+quote(fields,safe=",()*")+extra,H) or []
