@@ -6,7 +6,7 @@ on:
     inputs:
       batch_size:
         description: "Pools per run (1-40)"
-        default: "30"
+        default: "40"
         required: true
         type: string
 permissions:
@@ -27,5 +27,5 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          BACKFILL_BATCH_SIZE: ${{ inputs.batch_size || '30' }}
+          BACKFILL_BATCH_SIZE: ${{ inputs.batch_size || '40' }}
         run: python historical_backfill.py
