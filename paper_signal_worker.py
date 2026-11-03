@@ -20,21 +20,24 @@ def decide(launch, snap, audit):
     sells=int(snap.get("sells_5m") or 0)
     risk=(audit or {}).get("risk_level") or "unknown"
     reasons=[]
-    if age>90: reasons.append("detected_after_90s")
+    if age>300: reasons.append("detected_after_300s")
     if age<0: reasons.append("invalid_age")
     if liquidity<10000: reasons.append("liquidity_below_10000")
     if volume<3000: reasons.append("volume_5m_below_3000")
     if buys<10: reasons.append("buys_5m_below_10")
     if sells>0 and buys/sells<1.5: reasons.append("buy_sell_ratio_below_1_5")
-    if risk not in ("low",): reasons.append("risk_not_verified_low")
+    # Market research eligibility is distinct from verified safety.
+    # The current auditor never produces 'low'; 'medium' is NOT safe to trade.
+    if risk in ("high", "unknown"): reasons.append("risk_high_or_unknown")
+    if risk not in ("low", "medium"): reasons.append("risk_unverified")
     # Research gate only: candidate is NOT a recommendation or executable entry.
-    decision="candidate" if not reasons else "watch" if reasons==["detected_after_90s"] else "reject"
+    decision="candidate" if not reasons else "watch" if reasons==["detected_after_300s"] else "reject"
     return {"mint":launch["mint"],"decision":decision,
         "reason":",".join(reasons) if reasons else "research_filters_passed",
         "age_seconds":int(age),"liquidity_usd":snap.get("liquidity_usd"),
         "volume_5m_usd":snap.get("volume_5m_usd"),"buys_5m":buys,"sells_5m":sells,
         "price_usd":snap.get("price_usd"),"risk_level":risk,
-        "strategy_version":"observation_v1","simulated_order":False}
+        "strategy_version":"market_research_v2_unverified_risk","simulated_order":False}
 
 def main():
     if not URL or not KEY: raise RuntimeError("missing credentials")
@@ -48,7 +51,7 @@ def main():
     audits=fetch("token_audits","mint,risk_level","&limit=1000")
     first={}
     for x in snapshots:
-        first[x["mint"]]=x
+        first.setdefault(x["mint"],x)
     risk={x["mint"]:x for x in audits}
     rows=[]
     for launch in pending:
