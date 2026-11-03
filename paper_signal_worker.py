@@ -38,17 +38,17 @@ def decide(launch, snap, audit):
 
 def main():
     if not URL or not KEY: raise RuntimeError("missing credentials")
-    launches=fetch("launches","mint,created_at,first_seen_at","&order=first_seen_at.desc&limit=300")
+    launches=fetch("launches","mint,created_at,first_seen_at","&order=first_seen_at.desc&limit=100")
     existing={x["mint"] for x in fetch("paper_signals","mint","&limit=1000")}
     pending=[x for x in launches if x["mint"] not in existing and x.get("created_at")]
     if not pending:
         print("PAPER_SIGNALS",json.dumps({"new":0,"orders":0}))
         return
-    snapshots=fetch("token_snapshots","mint,observed_at,price_usd,liquidity_usd,volume_5m_usd,buys_5m,sells_5m","&order=observed_at.asc&limit=1000")
+    snapshots=fetch("token_snapshots","mint,observed_at,price_usd,liquidity_usd,volume_5m_usd,buys_5m,sells_5m","&order=observed_at.desc&limit=1000")
     audits=fetch("token_audits","mint,risk_level","&limit=1000")
     first={}
     for x in snapshots:
-        if x["mint"] not in first: first[x["mint"]]=x
+        first[x["mint"]]=x
     risk={x["mint"]:x for x in audits}
     rows=[]
     for launch in pending:
