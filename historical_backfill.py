@@ -42,7 +42,7 @@ def main():
     if not url or not key:
         print("Missing credentials", file=sys.stderr)
         return 2
-    limit = max(1, min(40, int(os.getenv("BACKFILL_BATCH_SIZE", "20"))))
+    limit = max(1, min(150, int(os.getenv("BACKFILL_BATCH_SIZE", "20"))))
     delay = max(3, float(os.getenv("BACKFILL_DELAY_SECONDS", "5")))
     headers = {"apikey": key, "Authorization": "Bearer " + key}
     endpoint = (url + "/rest/v1/historical_cohort?select=mint,pool_address,created_at"
