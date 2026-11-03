@@ -57,6 +57,12 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python paper_report.py
 
+      - name: Scanner freshness and detection latency
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scanner_health.py
+
       - name: Audit historical minute candles (manual runs only)
         if: github.event_name == 'workflow_dispatch'
         env:
