@@ -1,0 +1,40 @@
+name: Backtest after historical recovery
+on:
+  workflow_run:
+    workflows: ["Historical candle backfill"]
+    types: [completed]
+permissions:
+  contents: read
+jobs:
+  backtest:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Backtest only if entire frozen cohort is recovered
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          from collector import request_json
+          from candle_backtest import main as backtest
+
+          url = os.environ["SUPABASE_URL"].rstrip("/")
+          key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+          headers = {"apikey": key, "Authorization": "Bearer " + key}
+          cohort = request_json(url + "/rest/v1/historical_cohort?select=mint&limit=1000", headers) or []
+          statuses = request_json(url + "/rest/v1/historical_fetch_status?select=mint,status&limit=1000", headers) or []
+          complete = {s["mint"] for s in statuses if s["status"] != "api_error"}
+          missing = len({s["mint"] for s in cohort} - complete)
+          print(f"FROZEN_COHORT_CHECK size={len(cohort)} remaining={missing}")
+          if len(cohort) != 518 or missing != 0:
+              print("Backtest deferred: historical recovery incomplete.")
+          else:
+              backtest()
+          PY
